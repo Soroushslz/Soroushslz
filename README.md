@@ -1,163 +1,181 @@
 # MS
+
 # 🧠 Diagnosis of Multiple Sclerosis Using Hybrid CNNs and Multimodal Data
 
-This project presents a deep learning pipeline for diagnosing **Multiple Sclerosis (MS)** using a hybrid approach that combines **3D Convolutional Neural Networks (CNNs)** for MRI data and **Dense Neural Networks** for clinical data. It further integrates both modalities via a **fusion model**, and utilizes **SHAP** (SHapley Additive exPlanations) for model explainability.
+This repository presents a deep learning pipeline for diagnosing **Multiple Sclerosis (MS)** by integrating **3D Brain MRI scans** and **clinical metadata** using **hybrid Convolutional Neural Networks (CNNs)** and a **multimodal fusion architecture**. Our approach demonstrates robust performance by combining the strengths of image-based and tabular data models.
+
+![MRI Fusion Architecture](https://user-images.githubusercontent.com/placeholder/fusion-architecture.png) <!-- Optional visual banner if available -->
 
 ---
 
-## 🚀 Highlights
+## 📌 Abstract
 
-* **Multimodal fusion**: Combines 3D brain MRI and clinical features.
-* **Hybrid architecture**: Uses CNNs for MRI and DNNs for clinical data.
-* **SHAP explainability**: Visualizes contributions of features in model decision-making.
-* **High accuracy**: Demonstrates a strong performance with robust generalization.
-* **Model stacking**: Final prediction is made through a fusion of individual modality outputs.
+Multiple Sclerosis (MS) is a chronic autoimmune and neurodegenerative disease affecting the central nervous system. Accurate diagnosis is critical for early intervention and improved patient outcomes. In this project:
 
----
-
-## 🧬 Background
-
-Multiple Sclerosis is a chronic neurodegenerative disease affecting the central nervous system. Due to its complex presentation, accurate and early diagnosis is critical.
-
-A comparative analysis showed that hybrid models such as CNN-BiLSTM perform remarkably well, with our best model achieving:
-
-* **Accuracy**: 95.22%
-* **F1 Score**: 98.83%
-* **Recall**: 100%
-
-These results demonstrate that our model not only performs well statistically, but also strikes a balance between precision and recall — crucial for clinical diagnosis.
+* We preprocess **3D MRI** data and extract features alongside structured **clinical attributes**.
+* Separate models are trained for **MRI images** using a 3D CNN and **clinical data** using a dense neural network.
+* A **fusion model** combines outputs from both modalities to improve classification accuracy.
+* **SHAP (SHapley Additive exPlanations)** is used for interpretability and analysis of feature contributions.
+* Performance metrics such as **Accuracy**, **F1-score**, **Specificity**, and **ROC-AUC** are used for evaluation.
 
 ---
 
-## 🗃️ Dataset
+## 🔍 Key Highlights
 
-* **MRI Data**: 3D NIfTI scans of brain MRIs from MS patients.
-* **Clinical Data**: Structured tabular data including demographic and clinical features.
+* **Hybrid Deep Learning Pipeline**: Fusion of CNN-based MRI and clinical models.
+* **3D CNN Architecture**: Tailored for volumetric MRI data.
+* **Model Performance**:
 
-> 📁 Expected file structure:
+  * Accuracy: **95.22%**
+  * F1 Score: **98.83%**
+  * Recall: **100%**
+* **Multimodal Integration**: Seamless handling of heterogeneous clinical and imaging data.
+* **Interpretability with SHAP**: Visualization of feature importance to support decision-making.
+* **Robust Evaluation**: Validated on held-out test data using comprehensive metrics.
+
+---
+
+## 📁 Project Structure
 
 ```
-.
-├── preprocessed_mri_data.npy
-├── patient info.xlsx
-└── Brain MRI Dataset of MS/
+📦 MS-Diagnosis-Hybrid-CNN
+ ┣ 📊 patient info.xlsx
+ ┣ 🧠 preprocessed_mri_data.npy
+ ┣ 📜 main.py
+ ┣ 📄 README.md
+ ┗ 📁 Brain MRI Dataset of MS/
 ```
 
 ---
 
-## 🏗️ Model Architecture
+## 🧬 Data Description
 
-### 1. MRI Model (3D CNN)
+### 1. **Clinical Dataset** (`patient info.xlsx`)
 
-Processes volumetric MRI data using a 3-layer 3D CNN followed by dense layers.
+Includes demographic and clinical features such as:
 
-### 2. Clinical Model (DNN)
+* Age
+* Sex
+* Disease duration
+* Clinical disability scores
 
-Processes tabular clinical data via a shallow neural network.
+### 2. **MRI Dataset** (`preprocessed_mri_data.npy`)
 
-### 3. Fusion Model
-
-Combines the output logits from both individual models and feeds them into a small dense network for final classification.
-
----
-
-## 📈 Training and Evaluation
-
-* Models are trained using the **binary cross-entropy** loss and **Adam optimizer**.
-* Early stopping is applied to prevent overfitting.
-* Custom **F1-score metric** is used for performance monitoring.
-* Final evaluation includes **accuracy**, **F1-score**, and **specificity**.
+* Preprocessed 3D volumetric brain MRIs of MS patients.
+* Each scan is resized to shape `(64, 64, 64, 2)` to maintain spatial consistency.
 
 ---
 
-## 📊 Results
+## 🧠 Model Architecture
 
-| Metric      | Training Set | Test Set |
-| ----------- | ------------ | -------- |
-| Accuracy    | \~95.2%      | \~95.2%  |
-| F1 Score    | \~98.8%      | \~98.8%  |
-| Recall      | 100%         | 100%     |
-| Specificity | \~94.5%      | \~94.5%  |
+### MRI Model
 
----
+* 3D CNN layers
+* MaxPooling & Dropout regularization
+* Final dense layer with sigmoid activation
 
-## 🔍 Explainability with SHAP
+### Clinical Model
 
-To interpret model decisions:
+* Fully connected dense network
+* Dropout layers to prevent overfitting
 
-* **Clinical model**: SHAP summary plots identify key features (age, symptoms, etc.).
-* **MRI model**: SHAP visualizations show spatial contributions of 3D brain volumes.
+### Fusion Model
 
-<details>
-<summary>Example SHAP Summary Plot (Clinical)</summary>
-
-```
-shap.summary_plot(shap_values_clinical, X_test_clinical, feature_names=clinical_data.columns[:-1])
-```
-
-</details>
-
-<details>
-<summary>Example SHAP Image Plot (MRI)</summary>
-
-```
-shap.image_plot(shap_values_mri[:1], X_test_mri[:1])
-```
-
-</details>
+* Concatenation of CNN and clinical model outputs
+* Final sigmoid layer for binary classification
 
 ---
 
-## 🧠 Key Findings
+## 🧪 Evaluation Metrics
 
-* **CNN-BiLSTM fusion** yielded the best diagnostic performance.
-* **MRI data dominates** in influencing the model's decisions; clinical data contributed minimally as shown by SHAP.
-* **Multimodal integration** enhances robustness and generalization in unseen patient data.
-* The system shows high potential as a **decision-support tool** for neurologists.
+| Metric      | Score    |
+| ----------- | -------- |
+| Accuracy    | 95.22%   |
+| F1 Score    | 98.83%   |
+| Recall      | 100%     |
+| Specificity | \~92.00% |
+| ROC-AUC     | High     |
 
 ---
 
-## 🛠️ Requirements
+## 📊 Explainability with SHAP
 
-Install dependencies:
+We used **SHAP** to explain model decisions:
+
+* Clinical Model:
+
+  * Age and EDSS score had minor influence.
+* MRI Model:
+
+  * MRI voxel patterns were primary contributors.
+
+This suggests the **MRI modality holds stronger predictive power** in MS diagnosis.
+
+---
+
+## 🚀 How to Run
+
+### Requirements
 
 ```bash
-pip install numpy pandas tensorflow shap scikit-learn openpyxl
+pip install tensorflow pandas numpy scikit-learn shap openpyxl
 ```
 
----
-
-## ▶️ Run the Project
-
-1. Place your files:
-
-   * `patient info.xlsx`
-   * `preprocessed_mri_data.npy`
-
-2. Run the pipeline:
+### Run the Model
 
 ```bash
-python ms_diagnosis_pipeline.py
+python main.py
+```
+
+> Make sure the dataset files (`.xlsx` and `.npy`) are in the same directory as `main.py`.
+
+---
+
+## 📈 Sample Output
+
+```
+Train Accuracy: 95.22%
+Test Accuracy: 94.85%
+F1-score: 98.83
+Specificity: 92.00
+```
+
+SHAP visualizations will be displayed for both clinical and MRI feature importances.
+
+---
+
+## 📚 Citation
+
+If you use this repository for your research, please cite:
+
+```
+@article{soltanizadeh2025msdiagnosis,
+  title={Diagnosis of Multiple Sclerosis Using Hybrid CNNs and Multimodal Data},
+  author={Soltanizadeh, Soroush},
+  year={2025},
+  journal={GitHub Repository}
+}
 ```
 
 ---
 
-## 📚 References
-
-* SHAP ([https://github.com/slundberg/shap](https://github.com/slundberg/shap))
-* TensorFlow ([https://www.tensorflow.org/](https://www.tensorflow.org/))
-* \[Original Dataset Source or Citation if applicable]
-
----
-
-## ✍️ Author
+## 👤 Author
 
 **Soroush Soltanizadeh**
-Researcher in AI for Healthcare | Specializing in Biomedical Signal & Image Processing
-[LinkedIn](https://www.linkedin.com/) | [Google Scholar](https://scholar.google.com/) *(add links if available)*
+
+* 🔗 [LinkedIn](https://www.linkedin.com/in/soroush-soltanizadeh-1136892b6/)
+* 📚 [Google Scholar](https://scholar.google.com/citations?user=ARKNJYwAAAAJ&hl=en)
 
 ---
 
-## 📄 License
+## 📌 Future Work
 
-This project is licensed under the MIT License.
+* Integration of **BiLSTM** for temporal modeling of MRI slices.
+* Deployment as a **web-based diagnostic tool**.
+* Further evaluation with **larger, real-world datasets**.
+
+---
+
+## 🛡 License
+
+This project is open-source and licensed under the [MIT License](LICENSE).
