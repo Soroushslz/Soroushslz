@@ -4,8 +4,6 @@
 
 This repository presents a deep learning pipeline for diagnosing **Multiple Sclerosis (MS)** by integrating **3D Brain MRI scans** and **clinical metadata** using **hybrid Convolutional Neural Networks (CNNs)** and a **multimodal fusion architecture**. Our approach demonstrates robust performance by combining the strengths of image-based and tabular data models.
 
-![MRI Fusion Architecture](https://user-images.githubusercontent.com/placeholder/fusion-architecture.png) <!-- Optional visual banner if available -->
-
 ---
 
 ## 📌 Abstract
