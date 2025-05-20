@@ -1,174 +1,195 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+from gc import callbacks
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+import shap
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, roc_auc_score
 
-# C extensions
-*.so
+# Define constants
+BASE_DIR = 'Brain MRI Dataset of MS'
+CLINICAL_DATA_FILE = 'patient info.xlsx'
+TARGET_SHAPE = (64, 64, 64)  # Target shape for MRI images
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+# Load clinical data
+clinical_data = pd.read_excel(CLINICAL_DATA_FILE)
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
+# Drop the (PatientID) column
+clinical_data = clinical_data.drop(columns=['PatientID'])
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+# Convert categorical variables to dummy/indicator variables
+clinical_data = pd.get_dummies(clinical_data, drop_first=True)
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-cover/
+# Extract features and target from dataset
+X_clinical = clinical_data.iloc[:, :-1].values
+Y = clinical_data.iloc[:, -1].values
 
-# Translations
-*.mo
-*.pot
+# Preprocess the MRI dataset
+preprocessed_nifti = np.load('preprocessed_mri_data.npy')
+preprocessed_nifti = np.random.rand(len(Y), np.prod(TARGET_SHAPE) * 2)  # type: ignore # Placeholder
 
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
+# Ensure the NIfTI data has a consistent shape
+nifti_features_shape = (TARGET_SHAPE[0], TARGET_SHAPE[1], TARGET_SHAPE[2], 2)
 
-# Flask stuff:
-instance/
-.webassets-cache
+# Combine clinical and MRI dataset
+X = np.hstack((X_clinical, preprocessed_nifti))
 
-# Scrapy stuff:
-.scrapy
+# Split data into training and test sets
+X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
 
-# Sphinx documentation
-docs/_build/
+# Separate clinical and MRI data in train and test sets
+num_clinical_features = X_clinical.shape[1]
+X_train_clinical = X_train[:, :num_clinical_features]
+X_train_mri = X_train[:, num_clinical_features:].reshape(-1, *nifti_features_shape)
+X_test_clinical = X_test[:, :num_clinical_features]
+X_test_mri = X_test[:, num_clinical_features:].reshape(-1, *nifti_features_shape)
 
-# PyBuilder
-.pybuilder/
-target/
+# Ensure that X_train_mri and X_test_mri have consistent shapes
+assert X_train_mri.shape[1:] == nifti_features_shape
+assert X_test_mri.shape[1:] == nifti_features_shape
 
-# Jupyter Notebook
-.ipynb_checkpoints
+# Define F1-score metric
+class F1Score(tf.keras.metrics.Metric):
+    def __init__(self, name='f1_score', **kwargs):
+        super(F1Score, self).__init__(name=name, **kwargs)
+        self.true_positives = self.add_weight(name='true_positives', initializer='zeros')
+        self.false_positives = self.add_weight(name='false_positives', initializer='zeros')
+        self.false_negatives = self.add_weight(name='false_negatives', initializer='zeros')
 
-# IPython
-profile_default/
-ipython_config.py
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.cast(y_pred > 0.5, tf.float32)  # Convert to binary
+        
+        self.true_positives.assign_add(tf.reduce_sum(y_true * y_pred)) # type: ignore
+        self.false_positives.assign_add(tf.reduce_sum((1 - y_true) * y_pred)) # type: ignore
+        self.false_negatives.assign_add(tf.reduce_sum(y_true * (1 - y_pred))) # type: ignore
 
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
+    def result(self):
+        precision = self.true_positives / (self.true_positives + self.false_positives + tf.keras.backend.epsilon())
+        recall = self.true_positives / (self.true_positives + self.false_negatives + tf.keras.backend.epsilon())
+        f1_score = 2 * (precision * recall) / (precision + recall + tf.keras.backend.epsilon())
+        return f1_score
 
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
+    def reset_states(self):
+        self.true_positives.assign(0)
+        self.false_positives.assign(0)
+        self.false_negatives.assign(0)
 
-# UV
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#uv.lock
+# Define Early stopping callback
+early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=40, restore_best_weights=True)
 
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
-#poetry.lock
+# Create the CNN model
+def create_mri_model(input_shape_mri):
+    input_mri = tf.keras.layers.Input(shape=input_shape_mri)
+    x = tf.keras.layers.Conv3D(32, (3, 3, 3), activation='relu', padding='same')(input_mri)
+    x = tf.keras.layers.MaxPooling3D((2, 2, 2))(x)
+    x = tf.keras.layers.Conv3D(64, (3, 3, 3), activation='relu', padding='same')(x)
+    x = tf.keras.layers.MaxPooling3D((2, 2, 2))(x)
+    x = tf.keras.layers.Conv3D(128, (3, 3, 3), activation='relu', padding='same')(x)
+    x = tf.keras.layers.MaxPooling3D((2, 2, 2))(x)
+    x = tf.keras.layers.Flatten()(x)
+    x = tf.keras.layers.Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.01))(x)
+    x = tf.keras.layers.Dropout(0.5)(x)
+    output = tf.keras.layers.Dense(1, activation='sigmoid')(x)
+    
+    model = tf.keras.Model(inputs=input_mri, outputs=output)
+    model.compile(loss='binary_crossentropy', optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), 
+                            metrics=['accuracy', tf.keras.metrics.AUC()])
+    return model
 
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#pdm.lock
-#   pdm stores project-wide configurations in .pdm.toml, but it is recommended to not include it
-#   in version control.
-#   https://pdm.fming.dev/latest/usage/project/#working-with-version-control
-.pdm.toml
-.pdm-python
-.pdm-build/
+def create_clinical_model(input_shape_clinical):
+    input_clinical = tf.keras.layers.Input(shape=input_shape_clinical)
+    x = tf.keras.layers.Dense(20, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.01))(input_clinical)
+    x = tf.keras.layers.Dropout(0.5)(x)
+    output = tf.keras.layers.Dense(1, activation='sigmoid')(x)
+    
+    model = tf.keras.Model(inputs=input_clinical, outputs=output)
+    model.compile(loss='binary_crossentropy', optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), 
+                            metrics=['accuracy', tf.keras.metrics.AUC()])
+    return model
 
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
-__pypackages__/
+input_shape_mri = TARGET_SHAPE + (2,)
+input_shape_clinical = (X_clinical.shape[1],)
 
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
+# Create models
+mri_model = create_mri_model(input_shape_mri)
+clinical_model = create_clinical_model(input_shape_clinical)
 
-# SageMath parsed files
-*.sage.py
+# Train the MRI model
+mri_model.fit(X_train_mri, Y_train, epochs=50, batch_size=32, 
+                validation_split=0.2, callbacks=[early_stopping], verbose=0)
 
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+# Train the Clinical model
+clinical_model.fit(X_train_clinical, Y_train, epochs=50, batch_size=32, 
+                validation_split=0.2, callbacks=[early_stopping], verbose=0)
 
-# Spyder project settings
-.spyderproject
-.spyproject
+# Get the logits from each model
+mri_logits = mri_model.predict(X_train_mri)
+clinical_logits = clinical_model.predict(X_train_clinical)
 
-# Rope project settings
-.ropeproject
+# Stack the logits together for a new model
+X_train_fusion = np.hstack((mri_logits, clinical_logits))
 
-# mkdocs documentation
-/site
+# Define the fusion model
+def create_fusion_model():
+    input_fusion = tf.keras.layers.Input(shape=(2,))
+    x = tf.keras.layers.Dense(32, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.01))(input_fusion)
+    x = tf.keras.layers.Dropout(0.5)(x)
+    output = tf.keras.layers.Dense(1, activation='sigmoid')(x)
+    
+    model = tf.keras.Model(inputs=input_fusion, outputs=output)
+    model.compile(loss='binary_crossentropy', optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), 
+                            metrics=['accuracy', tf.keras.metrics.AUC()])
+    return model
 
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+# Create and train the fusion model
+fusion_model = create_fusion_model()
+fusion_model.fit(X_train_fusion, Y_train, epochs=50, batch_size=32, 
+                validation_split=0.2, callbacks=[early_stopping], verbose=0)
 
-# Pyre type checker
-.pyre/
+def specificity(y_true, y_pred):
+    cm = confusion_matrix(y_true, y_pred)
+    return cm[0, 0] / (cm[0, 0] + cm[0, 1])
 
-# pytype static type analyzer
-.pytype/
+def auc_roc(y_true, y_pred):
+    return roc_auc_score(y_true, y_pred)
 
-# Cython debug symbols
-cython_debug/
+# Predict using the trained individual models
+mri_logits_train = mri_model.predict(X_train_mri)
+mri_logits_test = mri_model.predict(X_test_mri)
+clinical_logits_train = clinical_model.predict(X_train_clinical)
+clinical_logits_test = clinical_model.predict(X_test_clinical)
 
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
+# Stack the logits for fusion model evaluation
+X_train_fusion = np.hstack((mri_logits_train, clinical_logits_train))
+X_test_fusion = np.hstack((mri_logits_test, clinical_logits_test))
 
-# Ruff stuff:
-.ruff_cache/
+# Binarize the predictions
+y_train_pred = (fusion_model.predict(X_train_fusion) > 0.5).astype(int)
+y_test_pred = (fusion_model.predict(X_test_fusion) > 0.5).astype(int)
 
-# PyPI configuration file
-.pypirc
+# Evaluate the fusion model
+train_loss, train_accuracy, train_f1_score = fusion_model.evaluate(X_train_fusion, Y_train)
+test_loss, test_accuracy, test_f1_score = fusion_model.evaluate(X_test_fusion, Y_test)
+test_specificity = specificity(Y_test, y_test_pred)
+
+# Print Accuracy and F1-score of the fusion model
+print("Train Accuracy: {:.2f}%".format(train_accuracy * 100))
+print("Test Accuracy: {:.2f}%".format(test_accuracy * 100))
+print("F1-score: {:.2f}".format(test_f1_score))
+print("Specificity: {:.2f}".format(test_specificity))
+
+# Create an explainer for the clinical model
+explainer_clinical = shap.Explainer(clinical_model, X_train_clinical)
+shap_values_clinical = explainer_clinical(X_test_clinical)
+
+# Plot the SHAP values for the clinical model
+shap.summary_plot(shap_values_clinical, X_test_clinical, feature_names=clinical_data.columns[:-1])
+
+# flatten the MRI data before feeding it into SHAP
+X_test_mri_flat = X_test_mri.reshape(X_test_mri.shape[0], -1)
+explainer_mri = shap.Explainer(mri_model, X_test_mri_flat)
+shap_values_mri = explainer_mri(X_test_mri_flat)
+
+# visualizing the samples
+shap.image_plot(shap_values_mri[:1], X_test_mri[:1])
