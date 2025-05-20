@@ -142,21 +142,6 @@ SHAP visualizations will be displayed for both clinical and MRI feature importan
 
 ---
 
-## 📚 Citation
-
-If you use this repository for your research, please cite:
-
-```
-@article{soltanizadeh2025msdiagnosis,
-  title={Diagnosis of Multiple Sclerosis Using Hybrid CNNs and Multimodal Data},
-  author={Soltanizadeh, Soroush},
-  year={2025},
-  journal={GitHub Repository}
-}
-```
-
----
-
 ## 👤 Author
 
 **Soroush Soltanizadeh**
